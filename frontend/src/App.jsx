@@ -218,23 +218,22 @@ function MainApp({ user: initialUser, token, onLogout }) {
 
   const backgroundRefresh = async () => {
     const safe = async (fn) => { try { return await fn(); } catch (e) { console.warn(e); return null; } };
-    const [adv, tr, rp, ep, h] = await Promise.all([
-      safe(() => api("/ai/advice")),
-      safe(() => api("/market/trends")),
-      safe(() => api("/ai/predict/revenue")),
-      safe(() => api("/ai/predict/expenses")),
-      safe(() => api("/ai/health-score")),
-    ]);
 
-    if (adv && Array.isArray(adv)) {
-      setAdvice(adv);
-      // Automatically keep recs in sync if they are similar
-      setRecs(adv.map(a => ({ title: a.title, detail: a.text, priority: a.type, icon: a.icon, color: a.color })));
-    }
-    if (tr) setTrends(tr.data || []);
-    if (rp) setRevPred(rp);
-    if (ep) setExpPred(ep);
-    if (h && h.total_score !== undefined) setHealth(h);
+    // Fetch background data independently so one failure doesn't block others
+    safe(() => api("/ai/advice")).then(adv => {
+      if (adv && Array.isArray(adv)) {
+        setAdvice(adv);
+        setRecs(adv.map(a => ({ title: a.title, detail: a.text, priority: a.type, icon: a.icon, color: a.color })));
+      }
+    });
+
+    safe(() => api("/market/trends")).then(tr => {
+      if (tr && tr.data) setTrends(tr.data);
+    });
+
+    safe(() => api("/ai/predict/revenue")).then(rp => { if (rp) setRevPred(rp); });
+    safe(() => api("/ai/predict/expenses")).then(ep => { if (ep) setExpPred(ep); });
+    safe(() => api("/ai/health-score")).then(h => { if (h && h.total_score !== undefined) setHealth(h); });
   };
 
   const saveEntry = async () => {
