@@ -10,6 +10,7 @@ Key Features:
 
 import os
 import httpx
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,9 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
-load_dotenv()
+# Ensure .env is loaded from the same directory as this file
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 # Load core modules
 from auth import (
@@ -221,21 +224,42 @@ THEIR DATA:
 - Recent: {', '.join([t['description'] for t in recent[:3]])}"""
 
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             res = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                 json={
                     "model": "llama-3.3-70b-versatile",
-                    "max_tokens": 500,
+                    "max_tokens": 1000,
                     "messages": [
                         {"role": "system", "content": system},
                         *[{"role": m.role, "content": m.content} for m in req.messages],
                     ],
                 }
             )
+            
+            # Check for API-specific error responses
+            if res.status_code != 200:
+                print(f"Groq API Error: {res.status_code} - {res.text}")
+                # Fallback to a common model if the versatile one failed
+                if "model_not_found" in res.text:
+                    res = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                        json={
+                            "model": "llama3-70b-8192",
+                            "messages": [
+                                {"role": "system", "content": system},
+                                *[{"role": m.role, "content": m.content} for m in req.messages],
+                            ],
+                        }
+                    )
+
             data = res.json()
-            return {"reply": data["choices"][0]["message"]["content"]}
+            if "choices" in data:
+                return {"reply": data["choices"][0]["message"]["content"]}
+            else:
+                raise ValueError("Unexpected API response structure")
     except Exception as e:
         raise HTTPException(status_code=500, detail="Connecting to AI brain failed. Check your data link! 📡")
 
