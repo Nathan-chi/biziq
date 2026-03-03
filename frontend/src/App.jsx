@@ -679,13 +679,29 @@ export default function App() {
   const [token, setToken] = useState(null);
 
   useEffect(() => {
-    // Check if already logged in
     const savedToken = localStorage.getItem("biziq_token");
     const savedUser = localStorage.getItem("biziq_user");
+
     if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      // Verify with backend that session is STILL valid
+      authFetch("/auth/me", {}, savedToken).then(res => {
+        if (res && res.id) {
+          setToken(savedToken);
+          setUser(JSON.parse(savedUser));
+        } else {
+          handleLogout();
+        }
+      }).catch(() => { });
     }
+
+    // Sync logout across tabs
+    const syncLogout = (e) => {
+      if (e.key === "biziq_token" && !e.newValue) {
+        handleLogout();
+      }
+    };
+    window.addEventListener("storage", syncLogout);
+    return () => window.removeEventListener("storage", syncLogout);
   }, []);
 
   const handleAuth = (u, t) => { setUser(u); setToken(t); };
