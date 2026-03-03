@@ -47,12 +47,23 @@ export default function BizIQChatbot({ businessData, token }) {
                     messages: newMessages.map(m => ({ role: m.role, content: m.content }))
                 }),
             });
+
             const data = await response.json();
-            setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+
+            if (!response.ok) {
+                throw new Error(data.detail || "API error");
+            }
+
+            if (data.reply) {
+                setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+            } else {
+                throw new Error("Empty response from AI");
+            }
         } catch (e) {
+            console.error("Chatbot Error:", e);
             setMessages([...newMessages, {
                 role: "assistant",
-                content: "⚠️ I couldn't connect right now. Please check your internet and try again.",
+                content: `⚠️ Error: ${e.message}. Please check if the backend is running and your Groq API key is correct.`,
             }]);
         }
         setLoading(false);
