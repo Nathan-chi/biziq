@@ -165,6 +165,7 @@ const ScoreBar = ({ score, max, color }) => (
 
 function MainApp({ user: initialUser, token, onLogout }) {
   const [nav, setNav] = useState("Dashboard");
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [user, setUser] = useState(initialUser);
   const [summary, setSummary] = useState({});
   const [transactions, setTxns] = useState([]);
@@ -284,14 +285,33 @@ function MainApp({ user: initialUser, token, onLogout }) {
         </div>
       )}
 
+      {/* Mobile Header Overlay (when sidebar open) */}
+      {showMobileSidebar && (
+        <div
+          onClick={() => setShowMobileSidebar(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, backdropFilter: "blur(4px)" }}
+          className="show-mobile"
+        />
+      )}
+
       {/* Sidebar */}
-      <div style={{ width: 220, borderRight: "1px solid #21262d", display: "flex", flexDirection: "column", padding: "24px 0", position: "fixed", height: "100vh", zIndex: 10, background: "#0d1117" }}>
-        <div style={{ padding: "0 20px 24px" }}>
-          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -1, background: "linear-gradient(135deg,#00d4aa,#4a9eff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>BizIQ</div>
-          <div style={{ fontSize: 10, color: "#484f58", letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>Business Intelligence</div>
+      <div
+        className={showMobileSidebar ? "animate-slide-in" : "hide-mobile"}
+        style={{
+          width: 220, borderRight: "1px solid #21262d", display: "flex", flexDirection: "column",
+          padding: "24px 0", position: "fixed", height: "100vh", zIndex: 101, background: "#0d1117",
+          ...(showMobileSidebar ? { display: "flex", width: 260 } : {})
+        }}
+      >
+        <div style={{ padding: "0 20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -1, background: "linear-gradient(135deg,#00d4aa,#4a9eff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>BizIQ</div>
+            <div style={{ fontSize: 10, color: "#484f58", letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>Business Intelligence</div>
+          </div>
+          <div onClick={() => setShowMobileSidebar(false)} className="show-mobile" style={{ cursor: "pointer", color: "#8b949e", fontSize: 20 }}>✕</div>
         </div>
         {NAV.map(n => (
-          <div key={n} onClick={() => setNav(n)} style={{
+          <div key={n} onClick={() => { setNav(n); setShowMobileSidebar(false); }} style={{
             padding: "11px 20px", cursor: "pointer", fontSize: 13, fontWeight: 500,
             color: nav === n ? "#00d4aa" : "#8b949e",
             background: nav === n ? "rgba(0,212,170,0.08)" : "transparent",
@@ -323,26 +343,33 @@ function MainApp({ user: initialUser, token, onLogout }) {
       </div>
 
       {/* Main content */}
-      <div style={{ marginLeft: 220, flex: 1, padding: "28px 32px" }}>
+      <div className="main-content" style={{ marginLeft: 220, flex: 1, padding: "28px 32px" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 26 }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, letterSpacing: -0.5 }}>{nav}</h1>
-            <div style={{ fontSize: 12, color: "#484f58", marginTop: 3 }}>
-              Welcome back, {user.full_name} · {new Date().toDateString()}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 26, gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div onClick={() => setShowMobileSidebar(true)} className="show-mobile" style={{ cursor: "pointer", background: "#161b22", padding: "8px", borderRadius: 8, border: "1px solid #21262d" }}>
+              <div style={{ width: 18, height: 2, background: "#8b949e", marginBottom: 4 }}></div>
+              <div style={{ width: 18, height: 2, background: "#8b949e", marginBottom: 4 }}></div>
+              <div style={{ width: 18, height: 2, background: "#8b949e" }}></div>
+            </div>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, letterSpacing: -0.5 }}>{nav}</h1>
+              <div className="hide-mobile" style={{ fontSize: 12, color: "#484f58", marginTop: 3 }}>
+                Welcome back, {user.full_name} · {new Date().toDateString()}
+              </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <div onClick={() => loadAll()} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "8px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer" }}>↻ Refresh</div>
-            <div onClick={() => setNav("Data Entry")} style={{ background: "linear-gradient(135deg,#00d4aa,#4a9eff)", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#0d1117", cursor: "pointer" }}>+ New Entry</div>
+            <div onClick={() => loadAll()} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "8px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer" }}>↻<span className="hide-mobile"> Refresh</span></div>
+            <div onClick={() => setNav("Data Entry")} style={{ background: "linear-gradient(135deg,#00d4aa,#4a9eff)", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#0d1117", cursor: "pointer" }}>+<span className="hide-mobile"> New Entry</span></div>
           </div>
         </div>
 
         {/* DASHBOARD */}
         {nav === "Dashboard" && (
           <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 18 }}>
+            <div className="grid-cols-4" style={{ display: "grid", gap: 14, marginBottom: 18 }}>
               {[
                 { label: "Monthly Revenue", value: fmt(summary.monthly_revenue), color: "#00d4aa" },
                 { label: "Op. Expenses", value: fmt(summary.operating_expenses), color: "#ff4444" },
@@ -355,7 +382,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
                 </Card>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="grid-mobile-stack" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <Card>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>🤖 AI Insights</div>
                 {advice.slice(0, 3).map((a, i) => (
@@ -391,14 +418,14 @@ function MainApp({ user: initialUser, token, onLogout }) {
           <div>
             {health && (
               <Card style={{ marginBottom: 16, background: `linear-gradient(135deg, ${health.color}10, #161b22)`, border: `1px solid ${health.color}30` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="grid-mobile-stack" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20 }}>
                   <div>
                     <Label>Business Health Score</Label>
                     <div style={{ fontSize: 52, fontWeight: 900, color: health.color, lineHeight: 1 }}>{health.total_score}<span style={{ fontSize: 18, color: "#484f58" }}>/100</span></div>
                     <div style={{ fontSize: 14, color: health.color, marginTop: 4, fontWeight: 600 }}>{health.grade} — {health.label}</div>
                     <div style={{ fontSize: 12, color: "#8b949e", marginTop: 6 }}>{health.tip}</div>
                   </div>
-                  <div style={{ width: 240 }}>
+                  <div style={{ width: "100%", maxWidth: 240 }}>
                     {health.breakdown && Object.values(health.breakdown).map((b, i) => (
                       <div key={i} style={{ marginBottom: 14 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
@@ -412,11 +439,11 @@ function MainApp({ user: initialUser, token, onLogout }) {
                 </div>
               </Card>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+            <div className="grid-mobile-stack" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
               {revPred?.status === "success" && (
                 <Card>
                   <Label>Revenue Forecast — Next 30 Days</Label>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: "#00d4aa" }}>{fmt(revPred.predicted_next_30_days)}</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: "#00d4aa" }}>{fmt(revPred.predicted_next_30_days)}</div>
                   <div style={{ fontSize: 13, color: revPred.trend === "up" ? "#00d4aa" : "#ff4444", marginBottom: 12 }}>
                     {revPred.trend === "up" ? "▲" : "▼"} {Math.abs(revPred.growth_forecast_pct)}% vs current
                   </div>
@@ -430,7 +457,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
               {expPred?.status === "success" && (
                 <Card>
                   <Label>Expense Forecast — Next 30 Days</Label>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: "#ff4444" }}>{fmt(expPred.predicted_next_30_days)}</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: "#ff4444" }}>{fmt(expPred.predicted_next_30_days)}</div>
                   {revPred?.status === "success" && (
                     <div style={{ background: "#0d1117", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
                       <div style={{ fontSize: 11, color: "#484f58" }}>Predicted Net Profit</div>
@@ -467,7 +494,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
 
         {/* DATA ENTRY */}
         {nav === "Data Entry" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="grid-mobile-stack" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <Card>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 20 }}>Record a Transaction</div>
               <div style={{ display: "flex", background: "#0d1117", borderRadius: 8, padding: 4, marginBottom: 18 }}>
@@ -483,7 +510,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
               {[
                 { label: "Description", key: "description", placeholder: "e.g. Daily sales revenue", type: "text" },
                 { label: "Amount (₦)", key: "amount", placeholder: "e.g. 150000", type: "number" },
-                { label: "Category", key: "category", placeholder: "Revenue / Inventory / Utilities", type: "text" },
+                { label: "Category", key: "category", placeholder: "Revenue / Inventory", type: "text" },
                 { label: "Date", key: "date", type: "date" },
               ].map(f => (
                 <div key={f.key} style={{ marginBottom: 14 }}>
@@ -556,13 +583,13 @@ function MainApp({ user: initialUser, token, onLogout }) {
         {/* REPORTS */}
         {nav === "Reports" && (
           <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 16 }}>
+            <div className="grid-mobile-stack" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 16 }}>
               {[
                 { label: "Monthly Revenue", value: fmt(summary.monthly_revenue), color: "#00d4aa" },
                 { label: "Net Profit", value: fmt(summary.net_profit), color: summary.net_profit > 0 ? "#00d4aa" : "#ff4444" },
                 { label: "Profit Margin", value: `${summary.profit_margin || 0}%`, color: "#4a9eff" },
               ].map((r, i) => (
-                <Card key={i}><Label>{r.label}</Label><div style={{ fontSize: 26, fontWeight: 800, color: r.color }}>{r.value}</div></Card>
+                <Card key={i}><Label>{r.label}</Label><div style={{ fontSize: 24, fontWeight: 800, color: r.color }}>{r.value}</div></Card>
               ))}
             </div>
             <Card>
@@ -586,7 +613,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
 
         {/* SETTINGS */}
         {nav === "Settings" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 800 }}>
+          <div className="grid-mobile-stack" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 800 }}>
             <Card>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 18 }}>Business Profile</div>
               {[
@@ -599,7 +626,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
                 <div key={i} style={{ marginBottom: 14 }}>
                   <Label>{f.label}</Label>
                   <input value={user[f.key] || ""} onChange={e => setUser({ ...user, [f.key]: e.target.value })}
-                    style={{ width: "100%", background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                    style={{ width: "100%", background: "#0d1117", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
                 </div>
               ))}
               <div onClick={saveProfile} style={{ background: "linear-gradient(135deg,#00d4aa,#4a9eff)", borderRadius: 8, padding: "11px", textAlign: "center", fontWeight: 700, fontSize: 13, color: "#0d1117", cursor: "pointer" }}>
@@ -615,7 +642,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
                 <div key={i} style={{ marginBottom: 14 }}>
                   <Label>{f.label}</Label>
                   <input type="password" value={pwForm[f.key]} onChange={e => setPwForm({ ...pwForm, [f.key]: e.target.value })}
-                    style={{ width: "100%", background: "#0d1117", border: "1px solid #21262d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                    style={{ width: "100%", background: "#0d1117", border: "1px solid #30363d", borderRadius: 8, padding: "10px 14px", color: "#e6edf3", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
                 </div>
               ))}
               <div onClick={changePassword} style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 8, padding: "11px", textAlign: "center", fontWeight: 700, fontSize: 13, color: "#8b949e", cursor: "pointer" }}>
