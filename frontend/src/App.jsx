@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "./hooks/useAuth";
 import BizIQChatbot from "./components/Chatbot";
-
+import Billing from "./pages/Billing";
+import BillingSuccess from "./pages/BillingSuccess";
+import BillingNavBadge from "./components/BillingNavBadge";
+import InvoicePage from "./components/InvoicePage";
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // ── API helpers (attach token automatically) ──
@@ -15,7 +20,7 @@ const authFetch = (url, options = {}, token) => {
   }).then(r => r.json());
 };
 
-const NAV = ["Dashboard", "AI Predictions", "Data Entry", "Market Trends", "Reports", "Settings"];
+const NAV = ["Dashboard", "AI Predictions", "Data Entry", "Invoices", "Market Trends", "Reports", "Billing", "Settings"];
 const fmt = (n) => "₦" + Number(n || 0).toLocaleString();
 
 // ──────────────────────────────────────────────
@@ -37,33 +42,27 @@ const AuthInput = ({ label, field, type = "text", placeholder = "", value, onCha
 // AUTH SCREENS
 // ──────────────────────────────────────────────
 
-function AuthScreen({ onAuth }) {
+function AuthScreen() {
+  const { signIn, signUp, isLoading: loading, error: authError } = useAuth();
   const [mode, setMode] = useState("login"); // login | register
   const [form, setForm] = useState({ email: "", password: "", full_name: "", business_name: "", industry: "Retail", location: "Nigeria" });
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [localError, setLocalError] = useState("");
+
+  const error = authError || localError;
 
   const f = (k) => (e) => setForm(prev => ({ ...prev, [k]: e.target.value }));
 
   const submit = async () => {
-    setError(""); setLoading(true);
-    try {
-      const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
-      const body = mode === "login"
-        ? { email: form.email, password: form.password }
-        : form;
-      const res = await authFetch(endpoint, { method: "POST", body: JSON.stringify(body) });
-      if (res.token) {
-        localStorage.setItem("biziq_token", res.token);
-        localStorage.setItem("biziq_user", JSON.stringify(res.user));
-        onAuth(res.user, res.token);
-      } else {
-        setError(res.detail || "Something went wrong");
-      }
-    } catch (e) {
-      setError("Cannot connect to server. Is the backend running?");
+    setLocalError("");
+    const body = mode === "login"
+      ? { email: form.email, password: form.password }
+      : form;
+
+    if (mode === "login") {
+      await signIn(body);
+    } else {
+      await signUp(body);
     }
-    setLoading(false);
   };
 
   return (
@@ -312,11 +311,15 @@ function MainApp({ user: initialUser, token, onLogout }) {
         {NAV.map(n => (
           <div key={n} onClick={() => { setNav(n); setShowMobileSidebar(false); }} style={{
             padding: "11px 20px", cursor: "pointer", fontSize: 13, fontWeight: 500,
+            display: "flex", justifyContent: "space-between", alignItems: "center",
             color: nav === n ? "#00d4aa" : "#8b949e",
             background: nav === n ? "rgba(0,212,170,0.08)" : "transparent",
             borderLeft: nav === n ? "2px solid #00d4aa" : "2px solid transparent",
             transition: "all 0.15s",
-          }}>{n === "AI Predictions" ? "🧠 " : ""}{n}</div>
+          }}>
+            <div>{n === "AI Predictions" ? "🧠 " : ""}{n}</div>
+            {n === "Billing" && <BillingNavBadge />}
+          </div>
         ))}
 
         {/* User info + logout */}
@@ -493,7 +496,7 @@ function MainApp({ user: initialUser, token, onLogout }) {
 
         {/* DATA ENTRY */}
         {nav === "Data Entry" && (
-          <div className="grid-mobile-stack" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="grid-mobile-stack" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
             <Card>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 20 }}>Record a Transaction</div>
               <div style={{ display: "flex", background: "#0d1117", borderRadius: 8, padding: 4, marginBottom: 18 }}>
@@ -548,6 +551,14 @@ function MainApp({ user: initialUser, token, onLogout }) {
               </div>
             </Card>
           </div>
+        )}
+
+        {/* INVOICES */}
+        {nav === "Invoices" && (
+          <Card>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 20 }}>💼 Professional Invoice Generator</div>
+            <InvoicePage user={user} token={token} />
+          </Card>
         )}
 
         {/* MARKET TRENDS */}
@@ -608,6 +619,11 @@ function MainApp({ user: initialUser, token, onLogout }) {
               })}
             </Card>
           </div>
+        )}
+
+        {/* BILLING */}
+        {nav === "Billing" && (
+          <Billing user={user} />
         )}
 
         {/* SETTINGS */}
@@ -674,39 +690,27 @@ function MainApp({ user: initialUser, token, onLogout }) {
 // ROOT — decides what to show
 // ──────────────────────────────────────────────
 
+function ProtectedApp({ user, token, handleLogout }) {
+  if (!user) return <Navigate to="/login" replace />;
+  return (
+    <Routes>
+      <Route path="/billing/success" element={<BillingSuccess />} />
+      <Route path="*" element={<MainApp user={user} token={token} onLogout={handleLogout} />} />
+    </Routes>
+  );
+}
+
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
+  const { user, token, isLoading: loading, signOut: handleLogout } = useAuth();
 
-  useEffect(() => {
-    const savedToken = localStorage.getItem("biziq_token");
-    const savedUser = localStorage.getItem("biziq_user");
+  if (loading) return <div style={{ background: "#0d1117", minHeight: "100vh" }} />;
 
-    if (savedToken && savedUser) {
-      // Verify with backend that session is STILL valid
-      authFetch("/auth/me", {}, savedToken).then(res => {
-        if (res && res.id) {
-          setToken(savedToken);
-          setUser(JSON.parse(savedUser));
-        } else {
-          handleLogout();
-        }
-      }).catch(() => { });
-    }
-
-    // Sync logout across tabs
-    const syncLogout = (e) => {
-      if (e.key === "biziq_token" && !e.newValue) {
-        handleLogout();
-      }
-    };
-    window.addEventListener("storage", syncLogout);
-    return () => window.removeEventListener("storage", syncLogout);
-  }, []);
-
-  const handleAuth = (u, t) => { setUser(u); setToken(t); };
-  const handleLogout = () => { setUser(null); setToken(null); };
-
-  if (!user) return <AuthScreen onAuth={handleAuth} />;
-  return <MainApp user={user} token={token} onLogout={handleLogout} />;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={!user ? <AuthScreen /> : <Navigate to="/dashboard" replace />} />
+        <Route path="*" element={user ? <ProtectedApp user={user} token={token} handleLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
