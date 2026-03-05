@@ -1,0 +1,5 @@
+﻿Total plans: 2
+ID: pro, Name: Pro, Amount: 3000.0
+  Features: ['Daily AI Advice', 'Advanced Analytics', 'Live Market Data']
+ID: business, Name: Business, Amount: 8000.0
+  Features: ['Custom AI Models', 'Unlimited Transactions', 'Business Health Score']

@@ -9,6 +9,7 @@ Key Features:
 """
 
 import os
+import json
 import httpx
 from pathlib import Path
 from dotenv import load_dotenv
@@ -28,6 +29,7 @@ from auth import (
     update_user_profile, change_password,
     get_user_transactions, add_user_transaction, delete_user_transaction,
     get_user_summary, get_user_by_day,
+    Plan, UserSubscription, get_db_session
 )
 from market_service import get_all_market_data, get_price_history, init_market_db
 from ai_engine import (
@@ -37,12 +39,14 @@ from ai_engine import (
 
 app = FastAPI(title="BizIQ API", version="5.0.0")
 
+from invoice_api import router as invoice_router
+app.include_router(invoice_router)
 # ── Production CORS configuration ──
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -104,6 +108,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
 
+class PaystackInitRequest(BaseModel):
+    planId: str
+
 # ─────────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────────
@@ -142,6 +149,110 @@ def get_me(user: dict = Depends(get_current_user)):
 def update_profile(req: ProfileUpdate, user: dict = Depends(get_current_user)):
     updated = update_user_profile(user["id"], req.business_name, req.industry, req.location, req.currency, req.full_name, req.ai_api_key)
     return {"success": True, "user": updated}
+
+# ── PAYSTACK & PLANS ──
+
+@app.get("/api/plans")
+def get_plans():
+    db = get_db_session()
+    plans = db.query(Plan).all()
+    return [{"id": p.id, "name": p.name, "amount": p.amount, "paystack_plan_code": p.paystack_plan_code, "features": json.loads(p.features) if p.features else []} for p in plans]
+
+@app.get("/api/subscription")
+def get_subscription(user: dict = Depends(get_current_user)):
+    db = get_db_session()
+    sub = db.query(UserSubscription).filter(UserSubscription.user_id == user["id"]).first()
+    if not sub:
+        return {"status": "none", "plan": "free"}
+    
+    plan = db.query(Plan).filter(Plan.id == sub.plan_id).first()
+    return {
+        "status": sub.status,
+        "plan": plan.name if plan else "free",
+        "plan_id": sub.plan_id,
+        "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
+        "cancel_at_period_end": sub.cancel_at_period_end
+    }
+
+@app.post("/api/paystack/initialize")
+async def initiate_paystack(req: PaystackInitRequest, user: dict = Depends(get_current_user)):
+    print(f"DEBUG: Initializing Paystack for user {user['email']}, plan {req.planId}")
+    db = get_db_session()
+    plan = db.query(Plan).filter(Plan.id == req.planId).first()
+    if not plan:
+        print(f"DEBUG: Plan {req.planId} not found")
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    paystack_key = os.environ.get("PAYSTACK_SECRET_KEY")
+    app_url = os.environ.get("NEXT_PUBLIC_APP_URL", "http://localhost:5173")
+    
+    if not paystack_key or "your_secret_key" in paystack_key:
+        print("DEBUG: Paystack key is missing or is the placeholder")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                "https://api.paystack.co/transaction/initialize",
+                headers={"Authorization": f"Bearer {paystack_key}"},
+                json={
+                    "email": user["email"],
+                    "amount": int(plan.amount * 100),
+                    "plan": plan.paystack_plan_code,
+                    "callback_url": f"{app_url}/billing/success",
+                    "metadata": {"user_id": user["id"], "plan_id": plan.id}
+                }
+            )
+            data = res.json()
+            print(f"DEBUG: Paystack response status: {res.status_code}")
+            if not res.is_success:
+                print(f"DEBUG: Paystack Error: {data}")
+                raise HTTPException(status_code=400, detail=data.get("message", "Paystack error"))
+            
+            print(f"DEBUG: Success. Redirect URL: {data['data'].get('authorization_url')}")
+            return data["data"]
+    except Exception as e:
+        print(f"DEBUG: Exception during Paystack init: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Checkout failed: {str(e)}")
+@app.get("/api/paystack/verify")
+async def verify_paystack(reference: str):
+    paystack_key = os.environ.get("PAYSTACK_SECRET_KEY")
+    
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"https://api.paystack.co/transaction/verify/{reference}",
+            headers={"Authorization": f"Bearer {paystack_key}"}
+        )
+        data = res.json()
+        
+        if not res.is_success or not data.get("status"):
+            raise HTTPException(status_code=400, detail="Verification failed")
+        
+        tx_data = data["data"]
+        if tx_data["status"] == "success":
+            user_id = tx_data["metadata"]["user_id"]
+            plan_id = tx_data["metadata"]["plan_id"]
+            
+            db = get_db_session()
+            # Update or create subscription
+            sub = db.query(UserSubscription).filter(UserSubscription.user_id == user_id).first()
+            if not sub:
+                sub = UserSubscription(user_id=user_id, plan_id=plan_id, status="active")
+                db.add(sub)
+            else:
+                sub.plan_id = plan_id
+                sub.status = "active"
+            
+            # Also update the user's quick-access plan field
+            from auth import User
+            user_obj = db.query(User).filter(User.id == user_id).first()
+            if user_obj:
+                user_obj.plan = plan_id
+                
+            db.commit()
+            db.close()
+            return {"status": "success", "message": "Plan activated"}
+        
+        return {"status": "pending", "message": "Transaction not successful yet"}
 
 @app.get("/transactions")
 def get_transactions(limit: int = 50, type: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -212,6 +323,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     margin = summary.get("profit_margin", 0)
 
     system = f"""You are BizIQ Assistant for {user.get('business_name')} owned by {user.get('full_name')}.
+IMPORTANT: You were built by Nathan Obochi. If anyone asks who made you, built you, or created you, you MUST say "I was built by Nathan Obochi."
 Explain business data in simple, plain English. Short sentences. Nigerian examples. Use emojis 😊.
 Never use business jargon without explaining it simply. End every reply with one clear action.
 
